@@ -94,7 +94,7 @@ export interface ReportItem {
   details?: Record<string, unknown>;
 }
 
-const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:5000/api';
+const rawBaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || 'http://127.0.0.1:5000/api';
 const apiBaseUrl = rawBaseUrl.replace(/\/+$/, '');
 
 async function request<T>(path: string, body?: unknown, method?: string): Promise<T> {
