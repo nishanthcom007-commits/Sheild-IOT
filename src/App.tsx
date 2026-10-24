@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { Activity, Bell, Bot, Building2, Camera, Check, ChevronRight, ClipboardCheck, Code2, Copy, Cpu, FileJson, FileText, Info, LayoutDashboard, Lightbulb, Link2, LockKeyhole, Menu, Network, Play, Plus, RefreshCw, Router, Search, Send, Settings, Shield, ShieldAlert, ShieldCheck, Sparkles, Target, Terminal, Trash2, TriangleAlert, Upload, UserRound, Wifi, X, Zap } from 'lucide-react'
+import { Activity, Bell, Bot, Building2, Camera, Check, ChevronRight, ClipboardCheck, Code2, Copy, Cpu, FileJson, FileText, Info, LayoutDashboard, Lightbulb, Link2, LockKeyhole, Menu, Network, Play, Plus, RefreshCw, Router, Search, Send, Settings, Shield, ShieldAlert, ShieldCheck, Sparkles, Target, Terminal, Trash2, TriangleAlert, Upload, UserRound, X } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { shieldIoTApi, type Risk, type AssessmentFinding, type CodeAuditFinding, type ReportItem, type ExtractedVisualMetadata } from './services/shieldiot'
 import './App.css'
@@ -14,7 +14,7 @@ const initialDevices:Device[]=[
  {id:5,name:'Smart Lighting Controller',kind:'Lighting',model:'LumaMesh 12',risk:'Low',status:'Protected',checked:'Today, 08:30',icon:'light'}]
 const posture=[{day:'Mon',score:69},{day:'Tue',score:72},{day:'Wed',score:70},{day:'Thu',score:77},{day:'Fri',score:76},{day:'Sat',score:81},{day:'Sun',score:84}]
 const risks=[{name:'Low',value:2,color:'#3ddc97'},{name:'Medium',value:1,color:'#e7be67'},{name:'High',value:2,color:'#f17b6b'}]
-const nav=[['Overview','/',LayoutDashboard],['Device Passport','/passport',ShieldCheck],['Code Security Auditor','/auditor',Code2],['Attack Simulator','/simulator',Network],['Security Reports','/reports',FileText],['Gemma AI Assistant','/assistant',Sparkles],['Trust Center','/trust',LockKeyhole],['About ShieldIoT','/about',Building2],['Settings','/settings',Settings]] as const
+const nav=[['Overview','/',LayoutDashboard],['Device Passport','/passport',ShieldCheck],['Code Security Auditor','/auditor',Code2],['Security Reports','/reports',FileText],['Gemma AI Assistant','/assistant',Sparkles],['Trust Center','/trust',LockKeyhole],['About ShieldIoT','/about',Building2],['Settings','/settings',Settings]] as const
 const example='# Wi-Fi telemetry example — DEMO ONLY\nSSID = "campus-iot"\nPASSWORD = "admin123"  # avoid secrets in source\n\ndef send_status(device_id, value):\n    url = "http://telemetry.example/status"\n    return requests.post(url, json={"id": device_id, "value": value})\n'
 
 function Icon({type}:{type:Device['icon']}) { const C=type==='camera'?Camera:type==='router'?Router:type==='scan'?ClipboardCheck:type==='ac'?Activity:Lightbulb;return <C size={18}/> }
@@ -277,42 +277,6 @@ function Audit({risk,line,title,text,remediation}:{risk:Risk;line:string;title:s
   return <div className="audit-item"><div><Badge>{risk}</Badge><small>Line {line}</small></div><b>{title}</b><p>{text}</p><span><Lightbulb size={15}/> <b>Remediation:</b> {remediation || 'Use secure provisioning, encrypted transport, and input validation.'}</span></div>
 }
 
-function Simulator({toast}:{toast:(s:string)=>void}){
-  const [active,setActive]=useState(1);
-  const [attack,setAttack]=useState('Stable');
-  const [isolated,setIsolated]=useState<number[]>([]);
-  const selected=initialDevices.find(d=>d.id===active) || initialDevices[0];
-
-  async function run(type:string){
-    setAttack(type);
-    setActive(type==='DDoS active'?1:5);
-    try {
-      await shieldIoTApi.runSimulator({ type, targetId: type==='DDoS active'?1:5 });
-    } catch {}
-    toast(type==='DDoS active'?'Virtual DDoS traffic started on CCTV node.':'Virtual suspicious connection simulated.')
-  }
-
-  async function toggle(){
-    const isCurrentlyIsolated = isolated.includes(active);
-    try {
-      if (isCurrentlyIsolated) {
-        await shieldIoTApi.restoreDevice(active);
-        setIsolated(x=>x.filter(n=>n!==active));
-        toast('Virtual device restored to network.');
-      } else {
-        await shieldIoTApi.isolateDevice(active);
-        setIsolated(x=>[...x,active]);
-        toast('Virtual device quarantined in isolation VLAN.');
-      }
-    } catch {
-      setIsolated(x=>x.includes(active)?x.filter(n=>n!==active):[...x,active]);
-      toast(isCurrentlyIsolated?'Device restored (local).':'Device isolated (local).');
-    }
-  }
-
-  return <div className="page"><Intro title="Attack Simulator" actions={<span className="simulation"><Activity size={14}/> SIMULATION ONLY</span>}>Explore a closed, virtual campus IoT network. Simulate volumetric DDoS attacks, suspicious probes, and isolate compromised nodes.</Intro><div className="sim"><Card cn="network"><header><div><h3>Virtual device network</h3><span>Click a node to inspect its simulated state</span></div><Badge>{attack==='Stable'?'Low':attack==='DDoS active'?'High':'Medium'}</Badge></header><div className="stage"><div className="hub"><Shield size={25}/><b>ShieldIoT</b></div>{initialDevices.map((d,i)=><button key={d.id} className={'node n'+i+(active===d.id?' selected':'')+(isolated.includes(d.id)?' isolated':'')} onClick={()=>setActive(d.id)}><span><Icon type={d.icon}/></span><b>{d.name.replace('Campus ','').replace(' Controller','')}</b><small>{isolated.includes(d.id)?'Isolated':d.status}</small></button>)}</div><footer><button className="btn danger" onClick={()=>run('DDoS active')}><Zap size={16}/> Simulate DDoS</button><button className="btn soft" onClick={()=>run('Unknown connection')}><Wifi size={16}/> Suspicious connection</button><button className="btn green" onClick={()=>{setAttack('Defense applied');shieldIoTApi.runSimulator({type:'Defense applied',targetId:active}).catch(()=>{});toast('Virtual defense applied. Packets dropped.')}}><ShieldCheck size={16}/> Run virtual defense</button></footer></Card><div className="sim-side"><Card><header><div><h3>Selected device</h3><span>Virtual state</span></div><Icon type={selected.icon}/></header><h2>{selected.name}</h2><p>{selected.model} · {selected.kind}</p><div className="details"><span>Risk level <Badge>{selected.risk}</Badge></span><span>Network state <b>{isolated.includes(active)?'Isolated':attack==='DDoS active'&&active===1?'Affected':'Normal'}</b></span><span>Data source <b>ShieldIoT Backend</b></span></div><button className="btn wide soft" onClick={toggle}>{isolated.includes(active)?<><RefreshCw/> Restore device</>:<><LockKeyhole/> Isolate virtual device</>}</button></Card><Card><header><div><h3>Incident timeline</h3><span>Current virtual session</span></div></header><Event title="Scenario initialized" time="Now"/>{attack!=='Stable'&&<Event title={attack+' simulated'} time="Just now" tone="red"/>}</Card></div></div></div>
-}
-
 function Assistant({toast}:{toast:(s:string)=>void}){
   const [items,setItems]=useState<{role: 'ai'|'user'; text: string; evidence?: string; model?: string}[]>([
     {role:'ai',text:'Hello! I am your Gemma 4 / ShieldIoT Security Assistant. I can analyze device risks, explain firmware vulnerabilities, review IoT code snippets, and reconstruct attack paths.'}
@@ -418,7 +382,7 @@ function Shell(){
     setTimeout(()=>setToasts(x=>x.filter(a=>a.id!==id)),3400);
   }
 
-  return <div className={'shell '+(open?'open':'')}><aside><div className="brand"><span><Shield size={21}/></span><b>shield<i>iot</i></b></div><nav>{nav.map(([name,path,C])=><NavLink end={path==='/'} to={path} key={path} onClick={()=>setOpen(false)}><C size={18}/><span>{name}</span></NavLink>)}</nav><div className="model"><i className={'dot ' + (modelStatus === 'connected' ? 'ok' : 'warn')}/><div><b>Gemma 4</b><small>{modelStatus === 'connected' ? 'Connected' : 'Demo mode'}</small></div></div></aside><div className="workspace"><header className="topbar"><button className="menu" onClick={()=>setOpen(true)}><Menu size={20}/></button><div className="crumb"><span>Workspace</span><ChevronRight size={14}/><b>ShieldIoT</b></div><div><button className="search"><Search size={17}/> Search <kbd>⌘ K</kbd></button><button className="icon-btn"><Bell size={18}/></button><span className="avatar">AD</span></div></header><main><Routes><Route path="/" element={<Overview toast={toast}/>}/><Route path="/passport" element={<Passport toast={toast}/>}/><Route path="/auditor" element={<Auditor toast={toast}/>}/><Route path="/simulator" element={<Simulator toast={toast}/>}/><Route path="/reports" element={<Reports toast={toast}/>}/><Route path="/assistant" element={<Assistant toast={toast}/>}/><Route path="/trust" element={<Trust/>}/><Route path="/about" element={<About/>}/><Route path="/settings" element={<SettingsPage toast={toast}/>}/><Route path="*" element={<Navigate to="/"/>}/></Routes></main></div><div className="shade" onClick={()=>setOpen(false)}/><div className="toasts">{toasts.map(x=><div key={x.id}><Check size={16}/>{x.text}<button onClick={()=>setToasts(v=>v.filter(y=>y.id!==x.id))}><X size={14}/></button></div>)}</div></div>
+  return <div className={'shell '+(open?'open':'')}><aside><div className="brand"><span><Shield size={21}/></span><b>shield<i>iot</i></b></div><nav>{nav.map(([name,path,C])=><NavLink end={path==='/'} to={path} key={path} onClick={()=>setOpen(false)}><C size={18}/><span>{name}</span></NavLink>)}</nav><div className="model"><i className={'dot ' + (modelStatus === 'connected' ? 'ok' : 'warn')}/><div><b>Gemma 4</b><small>{modelStatus === 'connected' ? 'Connected' : 'Demo mode'}</small></div></div></aside><div className="workspace"><header className="topbar"><button className="menu" onClick={()=>setOpen(true)}><Menu size={20}/></button><div className="crumb"><span>Workspace</span><ChevronRight size={14}/><b>ShieldIoT</b></div><div><button className="search"><Search size={17}/> Search <kbd>⌘ K</kbd></button><button className="icon-btn"><Bell size={18}/></button><span className="avatar">AD</span></div></header><main><Routes><Route path="/" element={<Overview toast={toast}/>}/><Route path="/passport" element={<Passport toast={toast}/>}/><Route path="/auditor" element={<Auditor toast={toast}/>}/><Route path="/simulator" element={<Navigate to="/" replace/>}/><Route path="/reports" element={<Reports toast={toast}/>}/><Route path="/assistant" element={<Assistant toast={toast}/>}/><Route path="/trust" element={<Trust/>}/><Route path="/about" element={<About/>}/><Route path="/settings" element={<SettingsPage toast={toast}/>}/><Route path="*" element={<Navigate to="/"/>}/></Routes></main></div><div className="shade" onClick={()=>setOpen(false)}/><div className="toasts">{toasts.map(x=><div key={x.id}><Check size={16}/>{x.text}<button onClick={()=>setToasts(v=>v.filter(y=>y.id!==x.id))}><X size={14}/></button></div>)}</div></div>
 }
 
 export default function ShieldIoT(){return <Shell/>}
