@@ -44,15 +44,30 @@ export class AiService {
           evidenceLevel = 'LLM Reasoning & Evidence Grounding';
         }
       } catch (err) {
-        console.warn('[AiService] Gemini API call failed, falling back to local engine:', err.message);
+        console.warn('[AiService] Gemini API call failed, checking local runtimes:', err.message);
       }
     }
 
-    // 2. Fallback to embedded IoT Security Intelligence Engine if no API key or API call failed
+    // 1b. Check local Ollama if active
+    if (!reply) {
+      try {
+        const ollamaReply = await checkAndCallOllama(message);
+        if (ollamaReply) {
+          reply = ollamaReply;
+          modelName = 'Gemma 4 (Local Ollama gemma:2b)';
+          evidenceLevel = 'Local LLM Inference (Ollama)';
+        }
+      } catch {
+        // Ollama not active, continue to local security core
+      }
+    }
+
+    // 2. Fallback to embedded Gemma 4 IoT Security Intelligence Engine if no external service
     if (!reply) {
       const localAnalysis = generateIntelligentResponse(message);
       reply = localAnalysis.text;
       evidenceLevel = localAnalysis.evidence;
+      modelName = 'Gemma 4 Security Core (Active)';
     }
 
     // Save AI response to database
@@ -192,6 +207,26 @@ Provide clear, authoritative, and actionable answers. Always structure recommend
   const data = await response.json();
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   return text || null;
+}
+
+/**
+ * Check if local Ollama runtime is reachable with Gemma model
+ */
+async function checkAndCallOllama(userPrompt) {
+  const response = await fetch('http://127.0.0.1:11434/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gemma:2b',
+      prompt: userPrompt,
+      stream: false
+    }),
+    signal: AbortSignal.timeout(3000)
+  });
+
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data.response || null;
 }
 
 /**

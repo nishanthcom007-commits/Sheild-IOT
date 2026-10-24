@@ -37,13 +37,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(config.port, config.host, () => {
+server.listen(config.port, () => {
   console.log(`\n======================================================`);
   console.log(`  🛡️  ShieldIoT Security Backend is running!`);
-  console.log(`  🌐  Local URL:   http://localhost:${config.port}`);
+  console.log(`  🌐  Local URL:   http://localhost:${config.port} (or http://127.0.0.1:${config.port})`);
   console.log(`  🔍  API Docs:    http://localhost:${config.port}/api/docs`);
   console.log(`  ❤️   Health Check: http://localhost:${config.port}/api/health`);
-  console.log(`  🤖  AI Engine:   ${config.geminiApiKey ? 'Gemini Hybrid Cloud' : 'Gemma 4 Security Core (Local)'}`);
+  console.log(`  🤖  AI Engine:   ${config.geminiApiKey ? 'Gemini Cloud Hybrid' : 'Gemma 4 Security Core (Local)'}`);
   console.log(`  💾  Database:    ${config.dbPath}`);
   console.log(`======================================================\n`);
 });
