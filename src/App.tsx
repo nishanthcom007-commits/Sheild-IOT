@@ -49,15 +49,108 @@ function Passport({toast}:{toast:(s:string)=>void}){
   const [working,setWorking]=useState(false);
   const [scanStep,setScanStep]=useState('');
   const [done,setDone]=useState(false);
+  const [cameraActive,setCameraActive]=useState(false);
+  const [facingMode,setFacingMode]=useState<'environment'|'user'>('environment');
   const input=useRef<HTMLInputElement>(null);
+  const cameraInputRef=useRef<HTMLInputElement>(null);
+  const videoRef=useRef<HTMLVideoElement>(null);
+  const streamRef=useRef<MediaStream|null>(null);
   const [form,setForm]=useState({manufacturer:'VisionGuard',model:'VisionGuard C20',firmware:'2.4.1'});
   const [visualMeta,setVisualMeta]=useState<ExtractedVisualMetadata | null>(null);
   const [findings, setFindings]=useState<AssessmentFinding[]>([]);
   const [score, setScore]=useState<number | null>(null);
   const [risk, setRisk]=useState<Risk | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, []);
+
+  function stopCamera() {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }
+
+  async function openCamera(targetMode: 'environment' | 'user' = facingMode) {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      toast('Live camera stream not supported. Opening device camera dialog...');
+      cameraInputRef.current?.click();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: targetMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+      streamRef.current = stream;
+      setFacingMode(targetMode);
+      setCameraActive(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.warn('Camera video play error:', e));
+        }
+      }, 60);
+      toast('Live camera activated. Point at device label or QR code.');
+    } catch (err: any) {
+      console.warn('getUserMedia camera error:', err);
+      toast('Camera direct access blocked or denied. Opening device camera capture...');
+      cameraInputRef.current?.click();
+    }
+  }
+
+  function flipCamera() {
+    const next = facingMode === 'environment' ? 'user' : 'environment';
+    openCamera(next);
+  }
+
+  function capturePhoto() {
+    if (!videoRef.current) return;
+    try {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        setPreview(dataUrl);
+        setImageBase64(dataUrl);
+        setFileName(`Device_Camera_${Date.now()}.jpg`);
+        setDone(false);
+        setVisualMeta(null);
+        stopCamera();
+        toast('Device photo captured! Click "Assess device (AI Vision Scan)" to inspect.');
+      }
+    } catch (e: any) {
+      console.error('Capture photo error:', e);
+      toast('Failed to capture photo frame.');
+    }
+  }
+
   function file(f?:File){
     if(!f) return;
+    if(cameraActive) stopCamera();
     setFileName(f.name);
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -72,6 +165,7 @@ function Passport({toast}:{toast:(s:string)=>void}){
   }
 
   function loadSample(d: typeof initialDevices[0]){
+    if(cameraActive) stopCamera();
     const mfg = d.model.split(' ')[0];
     setForm({manufacturer: mfg, model: d.model, firmware: '2.4.1'});
     setFileName(`${d.name.replace(/\s+/g, '_')}_Label.png`);
@@ -138,7 +232,7 @@ function Passport({toast}:{toast:(s:string)=>void}){
     }
   }
 
-  return <div className="page"><Intro title="Device Passport" actions={<span className="badge ok" style={{background:'#e6f7f1',color:'#19715e'}}><Sparkles size={14}/> Gemma Multimodal Vision</span>}>Assess a device label photo or QR code with dynamic multimodal AI parsing.</Intro><Notice><span><b>Multimodal AI Vision Scan:</b> Uploading a label photo or QR code dynamically extracts the manufacturer, model, serial number, and firmware version to calculate real-time CVE risk scores.</span></Notice><div className="passport"><div><Card><header><div><h3>Device label inspection</h3><span>Upload an image or choose a demo device</span></div><Camera size={19}/></header><input ref={input} className="hidden" type="file" accept="image/*" onChange={e=>file(e.target.files?.[0])}/><div className="drop" onClick={()=>input.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();file(e.dataTransfer.files?.[0])}}>{working&&<div className="laser-beam"/>}{preview?<img src={preview} alt="Selected device label"/>:<><span><Upload size={25}/></span><b>Drop a label photo or QR code here</b><small>PNG, JPG or WEBP up to 10 MB</small><button className="btn soft">Browse image</button></>}</div>{working&&<div className="scan-progress"><RefreshCw className="spin" size={16}/><span><b>Multimodal AI Scan:</b> {scanStep}</span></div>}{visualMeta&&done&&<div className="visual-meta-card"><h4><Sparkles size={14}/> Extracted Hardware Identifiers</h4><div className="visual-meta-grid"><div className="visual-meta-item"><small>FCC ID</small><strong>{visualMeta.fccId || 'N/A'}</strong></div><div className="visual-meta-item"><small>MAC Address</small><strong>{visualMeta.macAddress || 'N/A'}</strong></div><div className="visual-meta-item"><small>Serial Number</small><strong>{visualMeta.serialNumber || 'N/A'}</strong></div><div className="visual-meta-item"><small>AI Confidence</small><strong style={{color:'#1f7663'}}>{visualMeta.confidence || '99.4%'}</strong></div></div></div>}<div className="samples"><small>Or use sample hardware</small>{initialDevices.slice(0,3).map(d=><button key={d.id} onClick={()=>loadSample(d)}><Icon type={d.icon}/>{d.kind}</button>)}</div></Card><Card cn="findings"><header><div><h3>{done?'Assessment findings':'Assessment preview'}</h3><span>{done?`${findings.length} security findings correlated`:'Run an assessment to view structured results'}</span></div></header>{done?<>{score!==null&&<div className="score-banner"><div><span className="ai-badge"><Sparkles size={12}/> AI Vision Scan Verified</span><small style={{display:'block',color:'#7b8b98',marginTop:'3px'}}>{visualMeta?.model || form.model} · FW {visualMeta?.firmware || form.firmware}</small></div><div className={`score-pill ${(risk || 'High').toLowerCase()}`}>{score} <small>/100</small></div></div>}{findings.map((f, i)=><Finding key={i} risk={f.risk} title={f.title} text={f.text} recommendation={f.recommendation}/>)}</>:<div className="empty"><ShieldCheck size={28}/><b>No assessment yet</b><span>Upload a label photo or QR code and click "Assess Device" to begin multimodal AI vision inspection.</span></div>}</Card></div><div><Card cn="form"><header><div><h3>Device details</h3><span>Dynamically parsed via AI Vision Scan</span></div></header>{Object.entries(form).map(([key,value])=><label key={key}>{key==='firmware'?'Firmware version':key[0].toUpperCase()+key.slice(1)}<input value={value} onChange={e=>setForm({...form,[key]:e.target.value})}/></label>)}<div className="qr"><Link2/><div><b>QR inspection</b><small>{visualMeta?.qrData ? visualMeta.qrData : 'Available when a readable QR code is detected in image.'}</small></div><Badge>{visualMeta?.qrData ? 'Detected' : 'Ready'}</Badge></div><button className="btn primary wide" disabled={working} onClick={assess}>{working?<><RefreshCw className="spin"/> Analyzing label with AI Vision…</>:<><Sparkles size={16}/> Assess device (AI Vision Scan)</>}</button></Card><Card cn="history"><header><div><h3>Recent assessment history</h3><span>Synchronized with ShieldIoT database</span></div></header>{initialDevices.slice(0,2).map(d=><div className="history-row" key={d.id}><span><Icon type={d.icon}/></span><div><b>{d.name}</b><small>Today · Assessed</small></div><Badge>{d.risk}</Badge></div>)}</Card></div></div></div>
+  return <div className="page"><Intro title="Device Passport" actions={<span className="badge ok" style={{background:'#e6f7f1',color:'#19715e'}}><Sparkles size={14}/> Gemma Multimodal Vision</span>}>Assess a device label photo or QR code with dynamic multimodal AI parsing.</Intro><Notice><span><b>Multimodal AI Vision Scan:</b> Uploading a label photo or QR code dynamically extracts the manufacturer, model, serial number, and firmware version to calculate real-time CVE risk scores.</span></Notice><div className="passport"><div><Card><header><div><h3>Device label inspection</h3><span>Upload an image or choose a demo device</span></div><button type="button" className={`camera-toggle-btn ${cameraActive ? 'active' : ''}`} onClick={cameraActive ? stopCamera : () => openCamera()} title={cameraActive ? "Close camera" : "Open live camera"}>{cameraActive ? <X size={17}/> : <Camera size={17}/>}</button></header><input ref={input} className="hidden" type="file" accept="image/*" onChange={e=>file(e.target.files?.[0])}/><input ref={cameraInputRef} className="hidden" type="file" accept="image/*" capture="environment" onChange={e=>file(e.target.files?.[0])}/>{cameraActive ? (<div className="camera-viewfinder"><video ref={videoRef} autoPlay playsInline muted className="camera-video"/><div className="camera-reticle"><div className="reticle-corner tl"/><div className="reticle-corner tr"/><div className="reticle-corner bl"/><div className="reticle-corner br"/><div className="camera-scan-laser"/><span className="camera-live-pill"><span className="pulse-dot"/> LIVE CAMERA</span></div><div className="camera-controls"><button type="button" className="btn soft sm" onClick={stopCamera}><X size={13}/> Close</button><button type="button" className="btn soft sm" onClick={flipCamera} title="Flip camera"><RefreshCw size={13}/> Switch</button><button type="button" className="btn primary sm" onClick={capturePhoto}><Camera size={14}/> Capture Photo</button></div></div>) : (<div className={`drop ${preview ? 'has-preview' : ''}`} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();file(e.dataTransfer.files?.[0])}}>{working&&<div className="laser-beam"/>}{preview ? (<><img src={preview} alt="Selected device label"/><div className="preview-overlay-bar"><button type="button" className="btn soft sm" onClick={()=>input.current?.click()}><Upload size={12}/> Browse file</button><button type="button" className="btn green sm" onClick={()=>openCamera()}><Camera size={12}/> Live camera</button><button type="button" className="btn danger-outline sm" onClick={()=>{setPreview('');setImageBase64('');setFileName('');setDone(false);setVisualMeta(null);}}><Trash2 size={12}/> Clear</button></div></>) : (<><span><Upload size={25}/></span><b>Drop a label photo or QR code here</b><small>PNG, JPG or WEBP up to 10 MB</small><div className="drop-btn-row"><button type="button" className="btn soft" onClick={()=>input.current?.click()}><Upload size={14}/> Browse image</button><button type="button" className="btn green" onClick={()=>openCamera()}><Camera size={14}/> Live Camera</button></div></>)}</div>)}{working&&<div className="scan-progress"><RefreshCw className="spin" size={16}/><span><b>Multimodal AI Scan:</b> {scanStep}</span></div>}{visualMeta&&done&&<div className="visual-meta-card"><h4><Sparkles size={14}/> Extracted Hardware Identifiers</h4><div className="visual-meta-grid"><div className="visual-meta-item"><small>FCC ID</small><strong>{visualMeta.fccId || 'N/A'}</strong></div><div className="visual-meta-item"><small>MAC Address</small><strong>{visualMeta.macAddress || 'N/A'}</strong></div><div className="visual-meta-item"><small>Serial Number</small><strong>{visualMeta.serialNumber || 'N/A'}</strong></div><div className="visual-meta-item"><small>AI Confidence</small><strong style={{color:'#1f7663'}}>{visualMeta.confidence || '99.4%'}</strong></div></div></div>}<div className="samples"><small>Or use sample hardware</small>{initialDevices.slice(0,3).map(d=><button key={d.id} onClick={()=>loadSample(d)}><Icon type={d.icon}/>{d.kind}</button>)}</div></Card><Card cn="findings"><header><div><h3>{done?'Assessment findings':'Assessment preview'}</h3><span>{done?`${findings.length} security findings correlated`:'Run an assessment to view structured results'}</span></div></header>{done?<>{score!==null&&<div className="score-banner"><div><span className="ai-badge"><Sparkles size={12}/> AI Vision Scan Verified</span><small style={{display:'block',color:'#7b8b98',marginTop:'3px'}}>{visualMeta?.model || form.model} · FW {visualMeta?.firmware || form.firmware}</small></div><div className={`score-pill ${(risk || 'High').toLowerCase()}`}>{score} <small>/100</small></div></div>}{findings.map((f, i)=><Finding key={i} risk={f.risk} title={f.title} text={f.text} recommendation={f.recommendation}/>)}</>:<div className="empty"><ShieldCheck size={28}/><b>No assessment yet</b><span>Upload a label photo or QR code and click "Assess Device" to begin multimodal AI vision inspection.</span></div>}</Card></div><div><Card cn="form"><header><div><h3>Device details</h3><span>Dynamically parsed via AI Vision Scan</span></div></header>{Object.entries(form).map(([key,value])=><label key={key}>{key==='firmware'?'Firmware version':key[0].toUpperCase()+key.slice(1)}<input value={value} onChange={e=>setForm({...form,[key]:e.target.value})}/></label>)}<div className="qr"><Link2/><div><b>QR inspection</b><small>{visualMeta?.qrData ? visualMeta.qrData : 'Available when a readable QR code is detected in image.'}</small></div><Badge>{visualMeta?.qrData ? 'Detected' : 'Ready'}</Badge></div><button className="btn primary wide" disabled={working} onClick={assess}>{working?<><RefreshCw className="spin"/> Analyzing label with AI Vision…</>:<><Sparkles size={16}/> Assess device (AI Vision Scan)</>}</button></Card><Card cn="history"><header><div><h3>Recent assessment history</h3><span>Synchronized with ShieldIoT database</span></div></header>{initialDevices.slice(0,2).map(d=><div className="history-row" key={d.id}><span><Icon type={d.icon}/></span><div><b>{d.name}</b><small>Today · Assessed</small></div><Badge>{d.risk}</Badge></div>)}</Card></div></div></div>
 }
 
 function Finding({risk,title,text,recommendation}:{risk:Risk;title:string;text:string;recommendation?:string}){
