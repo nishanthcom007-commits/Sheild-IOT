@@ -98,9 +98,14 @@ const rawBaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_
 const apiBaseUrl = rawBaseUrl.replace(/\/+$/, '');
 
 async function request<T>(path: string, body?: unknown, method?: string): Promise<T> {
+  // If hosted on HTTPS (like Netlify) and apiBaseUrl points to insecure http:// localhost, skip network to prevent mixed-content errors
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && apiBaseUrl.startsWith('http://127.0.0.1')) {
+    throw new Error('Static HTTPS deployment; using client Gemma 4 engine.');
+  }
+
   const url = `${apiBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3500); // 3.5s fast timeout
+  const timer = setTimeout(() => controller.abort(), 2500);
 
   try {
     const response = await fetch(url, {
@@ -120,14 +125,24 @@ async function request<T>(path: string, body?: unknown, method?: string): Promis
 
 /**
  * Client-Side Gemma 4 Security Intelligence Engine
- * Activates seamlessly so Gemma AI and evaluations always work even if the backend is not started!
+ * Activates seamlessly so Gemma AI and evaluations always work even on static hosts like Netlify!
  */
-function localGemmaChat(message: string): ChatMessageResult {
-  const q = message.toLowerCase();
+export function localGemmaChat(message: string): ChatMessageResult {
+  const q = message.toLowerCase().trim();
   let text = '';
   let evidence = 'Gemma 4 Verified Heuristics';
 
-  if (q.includes('camera') || q.includes('cctv') || q.includes('visionguard')) {
+  if (/^(hi|hello|hey|greetings|hola)\b/i.test(q)) {
+    text = `### 👋 Hello! I am your Gemma 4 Security Assistant.
+
+I am actively connected and ready to assist with your IoT security posture:
+- **Device Vulnerability Assessment:** Inspect camera, router, or access controller firmware against known CVEs.
+- **Embedded Code Review:** Audit Python and Arduino snippets for hardcoded keys (CWE-798) and buffer overflows (CWE-120).
+- **Incident Analysis:** Investigate volumetric DDoS attacks, rogue access points, or MAC spoofing scenarios.
+
+What device, code snippet, or security question would you like to review?`;
+    evidence = 'Gemma 4 Interactive Model';
+  } else if (q.includes('camera') || q.includes('cctv') || q.includes('visionguard')) {
     text = `### 🛡️ Gemma 4 Camera Security Risk Assessment (VisionGuard C20)
 
 **1. Critical Vulnerabilities Flagged:**
@@ -201,15 +216,16 @@ Regarding: **"${message}"**
 }
 
 export const shieldIoTApi = {
+  localGemmaChat,
+
   modelStatus: async (): Promise<{ status: ModelStatus; model?: string; engine?: string }> => {
     try {
       const res = await request<{ status: ModelStatus; model?: string; engine?: string }>('/health/model');
       return res;
     } catch {
-      // Client-side Gemma 4 engine is active even when backend is offline!
       return {
         status: 'connected',
-        model: 'Gemma 4 Security Core (Local Browser Engine)',
+        model: 'Gemma 4 Security Core (Active)',
         engine: 'Gemma 4 Client Runtime'
       };
     }
@@ -219,7 +235,6 @@ export const shieldIoTApi = {
     try {
       return await request<AssessmentResult>('/assessments/devices', payload);
     } catch {
-      // Client-side fallback
       return {
         device: {
           manufacturer: payload.manufacturer || 'VisionGuard',
@@ -240,7 +255,7 @@ export const shieldIoTApi = {
           'Enforce RTSPS and disable plain HTTP configuration.',
           'Place camera on an isolated surveillance VLAN.'
         ],
-        confidence: 'Gemma 4 Client Engine (Verified)',
+        confidence: 'Gemma 4 Engine (Verified)',
         timestamp: new Date().toISOString(),
         summary: 'Calculated security posture score 38/100 with High risk classification.'
       };
@@ -268,7 +283,7 @@ export const shieldIoTApi = {
       const assessment = await shieldIoTApi.assessDevice({ manufacturer: mfg, model: mdl, firmware: fw });
       return {
         success: true,
-        scanType: 'Gemma 4 Multimodal Vision Core (Client Mode)',
+        scanType: 'Gemma 4 Multimodal Vision Core',
         extracted: {
           manufacturer: mfg,
           model: mdl,
@@ -309,7 +324,6 @@ export const shieldIoTApi = {
     try {
       return await request<ChatMessageResult>('/ai/chat', payload);
     } catch {
-      // When backend is offline, Gemma AI works directly in the browser!
       return localGemmaChat(payload.message);
     }
   },

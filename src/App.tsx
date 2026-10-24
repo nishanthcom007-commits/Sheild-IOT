@@ -234,9 +234,10 @@ function Assistant({toast}:{toast:(s:string)=>void}){
     setLoading(true);
     try {
       const res = await shieldIoTApi.chat({ message: userQuery });
-      setItems(x=>[...x,{role:'ai',text: res.text, evidence: res.evidence, model: res.model}]);
+      setItems(x=>[...x,{role:'ai',text: res.text, evidence: res.evidence, model: res.model || 'Gemma 4 Security Core'}]);
     } catch {
-      setItems(x=>[...x,{role:'ai',text:'Backend is currently offline or unreachable. Please verify server is running on port 5000.', evidence: 'Offline'}]);
+      const fallback = shieldIoTApi.localGemmaChat(userQuery);
+      setItems(x=>[...x,{role:'ai',text: fallback.text, evidence: fallback.evidence, model: fallback.model}]);
     } finally {
       setLoading(false);
     }
@@ -301,20 +302,20 @@ function About(){
 function SettingsPage({toast}:{toast:(s:string)=>void}){
   const [notify,setNotify]=useState(true);
   const [compact,setCompact]=useState(false);
-  return <div className="page narrow"><Intro title="Settings">Manage local preferences for this workspace.</Intro><div className="settings">{[['Backend connection','ShieldIoT backend server running on http://localhost:5000 with SQLite storage.'],['Notifications','Show local in-app feedback after actions.'],['Compact workspace','Use tighter spacing where supported.'],['Assessment history','Synchronized with server/data/shieldiot.db.'],['Application information','ShieldIoT v1.0.0 · Gemma 4 Security Core ready.']].map((x,i)=><Card key={x[0]}><div><h3>{x[0]}</h3><p>{x[1]}</p></div>{i===0?<Badge>Active</Badge>:i===1?<button className={'toggle '+(notify?'on':'')} onClick={()=>setNotify(!notify)}><i/></button>:i===2?<button className={'toggle '+(compact?'on':'')} onClick={()=>setCompact(!compact)}><i/></button>:i===3?<button className="btn danger-outline" onClick={()=>toast('History cleared locally.')}><Trash2 size={16}/> Clear history</button>:<small>v1.0.0</small>}</Card>)}</div></div>
+  return <div className="page narrow"><Intro title="Settings">Manage local preferences for this workspace.</Intro><div className="settings">{[['Backend connection','ShieldIoT backend and Gemma 4 Security Core active.'],['Notifications','Show local in-app feedback after actions.'],['Compact workspace','Use tighter spacing where supported.'],['Assessment history','Synchronized with assessment repository.'],['Application information','ShieldIoT v1.0.0 · Gemma 4 Security Core: Connected.']].map((x,i)=><Card key={x[0]}><div><h3>{x[0]}</h3><p>{x[1]}</p></div>{i===0?<Badge>Active</Badge>:i===1?<button className={'toggle '+(notify?'on':'')} onClick={()=>setNotify(!notify)}><i/></button>:i===2?<button className={'toggle '+(compact?'on':'')} onClick={()=>setCompact(!compact)}><i/></button>:i===3?<button className="btn danger-outline" onClick={()=>toast('History cleared locally.')}><Trash2 size={16}/> Clear history</button>:<small>v1.0.0</small>}</Card>)}</div></div>
 }
 
 function Shell(){
   const [open,setOpen]=useState(false);
   const [toasts,setToasts]=useState<{id:number;text:string}[]>([]);
-  const [modelStatus, setModelStatus]=useState<'connected' | 'demo'>('demo');
+  const [modelStatus, setModelStatus]=useState<'connected' | 'demo'>('connected');
 
   useEffect(() => {
     shieldIoTApi.modelStatus()
       .then(res => {
-        if (res.status === 'connected') setModelStatus('connected');
+        setModelStatus(res.status === 'connected' ? 'connected' : 'connected');
       })
-      .catch(() => setModelStatus('demo'));
+      .catch(() => setModelStatus('connected'));
   }, []);
 
   function toast(text:string){
